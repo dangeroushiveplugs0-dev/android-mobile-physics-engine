@@ -1,6 +1,7 @@
 package com.example.physicsengine.scene
 
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sin
 
 data class Vec2(
@@ -97,11 +98,17 @@ class AnimationTimeline {
         ensureTrack(trackName).addKeyframe(time, value)
     }
 
+    fun setLoopPose(trackName: String, start: Vec2, end: Vec2, duration: Float) {
+        val track = ensureTrack(trackName)
+        track.addKeyframe(0f, start)
+        track.addKeyframe(duration, end)
+    }
+
     fun sample(trackName: String, time: Float = currentTime): Vec2 {
         return tracks[trackName]?.sample(time) ?: Vec2(0f, 0f)
     }
 
-    fun maxDuration(): Float = tracks.values.fold(0f) { acc, track -> kotlinx.coroutines.internal.max(acc, track.duration()) }
+    fun maxDuration(): Float = tracks.values.fold(0f) { acc, track -> max(acc, track.duration()) }
 
     fun update(dt: Float) {
         if (!playing) return
@@ -166,33 +173,28 @@ class MeshBinding(
         return Vec2(x, y)
     }
 
+    fun paintedWeight(index: Int): Float = when (bindingMode) {
+        BindingMode.Full -> 1f
+        BindingMode.Partial -> weightPaint.get(index).coerceIn(0f, 1f)
+        BindingMode.PhysicsDriven -> 1f
+    }
+
     fun finalSurface(animationPose: Vec2, physicsPose: Vec2): List<Vec2> {
         val c = cos(rotation.toDouble()).toFloat()
         val s = sin(rotation.toDouble()).toFloat()
 
         return surfaceMesh.mapIndexed { index, vertex ->
-            val w = when (bindingMode) {
-                BindingMode.Full -> 1f
-                BindingMode.Partial -> weightPaint.get(index).coerceIn(0f, 1f)
-                BindingMode.PhysicsDriven -> 1f
-            }
-
-            val blended = blend(animationPose, physicsPose, w)
-
+            val weight = paintedWeight(index)
+            val blended = blend(animationPose, physicsPose, weight)
             val px = (vertex.x * c - vertex.y * s) + blended.x + transform.x
             val py = (vertex.x * s + vertex.y * c) + blended.y + transform.y
-
             Vec2(px, py)
         }
     }
 
     fun finalPoint(vertex: Vec2, index: Int, animationPose: Vec2, physicsPose: Vec2): Vec2 {
-        val w = when (bindingMode) {
-            BindingMode.Full -> 1f
-            BindingMode.Partial -> weightPaint.get(index).coerceIn(0f, 1f)
-            BindingMode.PhysicsDriven -> 1f
-        }
-        val blended = blend(animationPose, physicsPose, w)
+        val weight = paintedWeight(index)
+        val blended = blend(animationPose, physicsPose, weight)
         val c = cos(rotation.toDouble()).toFloat()
         val s = sin(rotation.toDouble()).toFloat()
         val px = (vertex.x * c - vertex.y * s) + blended.x + transform.x
@@ -220,5 +222,54 @@ class MeshRigScene(
 
     fun setPlaying(enabled: Boolean) {
         animationTimeline.playing = enabled
+    }
+
+    fun setLoopPose(start: Vec2, end: Vec2, duration: Float) {
+        animationTimeline.setLoopPose("position", start, end, duration)
+    }
+}
+
+class SceneRigBuilder {
+    fun createScene(): MeshRigScene {
+        val timeline = AnimationTimeline().apply {
+            setLoopPose("position", Vec2(110f, 180f), Vec2(260f, 150f), 2f)
+            play()
+        }
+
+        val proxy = PhysicsProxy(
+            position = Vec2(150f, 190f),
+            velocity = Vec2(35f, 18f),
+            radius = 28f
+        )
+
+        val points = listOf(
+            Vec2(-38f, -26f),
+            Vec2(10f, -42f),
+            Vec2(46f, -12f),
+            Vec2(38f, 26f),
+            Vec2(-8f, 42f),
+            Vec2(-44f, 18f)
+        )
+
+        val weightPaint = WeightPaint().apply {
+            setRange(0, 1, 0.35f)
+            setRange(2, 3, 0.6f)
+            setRange(4, 5, 0.85f)
+        }
+
+        val meshBinding = MeshBinding(
+            surfaceMesh = points,
+            collisionMesh = points,
+            weightPaint = weightPaint,
+            bindingMode = BindingMode.Partial,
+            transform = Vec2(0f, 0f),
+            rotation = 0.2f
+        )
+
+        return MeshRigScene(
+            animationTimeline = timeline,
+            proxy = proxy,
+            meshBinding = meshBinding
+        )
     }
 }
