@@ -5,6 +5,17 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 
+class Vec3(
+    var x: Float,
+    var y: Float,
+    var z: Float
+) {
+    operator fun plus(other: Vec3): Vec3 = Vec3(x + other.x, y + other.y, z + other.z)
+    operator fun minus(other: Vec3): Vec3 = Vec3(x - other.x, y - other.y, z - other.z)
+    operator fun times(s: Float): Vec3 = Vec3(x * s, y * s, z * s)
+    operator fun div(s: Float): Vec3 = Vec3(x / s, y / s, z / s)
+}
+
 data class Vec2(
     var x: Float,
     var y: Float
@@ -53,17 +64,17 @@ class WeightPaint {
 }
 
 class AnimationTrack {
-    data class Keyframe(val time: Float, val value: Vec2)
+    data class Keyframe(val time: Float, val value: Vec3)
 
     private val keyframes = mutableListOf<Keyframe>()
 
-    fun addKeyframe(time: Float, value: Vec2) {
+    fun addKeyframe(time: Float, value: Vec3) {
         keyframes.add(Keyframe(time, value))
         keyframes.sortBy { it.time }
     }
 
-    fun sample(time: Float): Vec2 {
-        if (keyframes.isEmpty()) return Vec2(0f, 0f)
+    fun sample(time: Float): Vec3 {
+        if (keyframes.isEmpty()) return Vec3(0f, 0f, 0f)
         if (keyframes.size == 1) return keyframes.first().value
 
         var previous = keyframes.first()
@@ -82,12 +93,10 @@ class AnimationTrack {
         val t = ((time - previous.time) / (next.time - previous.time)).coerceIn(0f, 1f)
         val smooth = t * t * (3f - 2f * t)
 
-        val dx = next.value.x - previous.value.x
-        val dy = next.value.y - previous.value.y
-
-        return Vec2(
-            previous.value.x + dx * smooth,
-            previous.value.y + dy * smooth
+        return Vec3(
+            previous.value.x + (next.value.x - previous.value.x) * smooth,
+            previous.value.y + (next.value.y - previous.value.y) * smooth,
+            previous.value.z + (next.value.z - previous.value.z) * smooth
         )
     }
 
@@ -104,25 +113,25 @@ class AnimationTimeline {
         return tracks.getOrPut(name) { AnimationTrack() }
     }
 
-    fun addKeyframe(trackName: String, time: Float, value: Vec2) {
+    fun addKeyframe(trackName: String, time: Float, value: Vec3) {
         ensureTrack(trackName).addKeyframe(time, value)
     }
 
-    fun setLoopPose(trackName: String, start: Vec2, end: Vec2, duration: Float) {
+    fun setLoopPose(trackName: String, start: Vec3, end: Vec3, duration: Float) {
         val track = ensureTrack(trackName)
         track.addKeyframe(0f, start)
         track.addKeyframe(duration, end)
     }
 
-    fun addMultiTrackPose(trackName: String, start: Vec2, mid: Vec2, end: Vec2, duration: Float) {
+    fun addMultiTrackPose(trackName: String, start: Vec3, mid: Vec3, end: Vec3, duration: Float) {
         val track = ensureTrack(trackName)
         track.addKeyframe(0f, start)
         track.addKeyframe(duration * 0.5f, mid)
         track.addKeyframe(duration, end)
     }
 
-    fun sample(trackName: String, time: Float = currentTime): Vec2 {
-        return tracks[trackName]?.sample(time) ?: Vec2(0f, 0f)
+    fun sample(trackName: String, time: Float = currentTime): Vec3 {
+        return tracks[trackName]?.sample(time) ?: Vec3(0f, 0f, 0f)
     }
 
     fun maxDuration(): Float = tracks.values.fold(0f) { acc, track -> max(acc, track.duration()) }
@@ -150,48 +159,59 @@ class AnimationTimeline {
 }
 
 class PhysicsProxy(
-    var position: Vec2,
-    var velocity: Vec2 = Vec2(0f, 0f),
+    var position: Vec3,
+    var velocity: Vec3 = Vec3(0f, 0f, 0f),
     var radius: Float = 24f
 ) {
     fun step(dt: Float, gravity: Float) {
         velocity.y += gravity * dt
         position.x += velocity.x * dt
         position.y += velocity.y * dt
+        position.z += velocity.z * dt
     }
 
-    fun applyBounds(width: Float, height: Float) {
-        if (position.x < radius) {
-            position.x = radius
+    fun applyBounds(width: Float, height: Float, depth: Float = 120f) {
+        if (position.x < -width * 0.5f + radius) {
+            position.x = -width * 0.5f + radius
             velocity.x *= -0.8f
         }
-        if (position.x > width - radius) {
-            position.x = width - radius
+        if (position.x > width * 0.5f - radius) {
+            position.x = width * 0.5f - radius
             velocity.x *= -0.8f
         }
-        if (position.y < radius) {
-            position.y = radius
+        if (position.y < -height * 0.5f + radius) {
+            position.y = -height * 0.5f + radius
             velocity.y *= -0.8f
         }
-        if (position.y > height - radius) {
-            position.y = height - radius
+        if (position.y > height * 0.5f - radius) {
+            position.y = height * 0.5f - radius
             velocity.y *= -0.8f
+        }
+        if (position.z < -depth * 0.5f + radius) {
+            position.z = -depth * 0.5f + radius
+            velocity.z *= -0.8f
+        }
+        if (position.z > depth * 0.5f - radius) {
+            position.z = depth * 0.5f - radius
+            velocity.z *= -0.8f
         }
     }
 }
 
 class MeshBinding(
-    val surfaceMesh: List<Vec2>,
-    val collisionMesh: List<Vec2>,
+    val surfaceMesh: List<Vec3>,
+    val collisionMesh: List<Vec3>,
     val weightPaint: WeightPaint,
-    var transform: Vec2 = Vec2(0f, 0f),
-    var rotation: Float = 0f,
+    var transform: Vec3 = Vec3(0f, 0f, 0f),
+    var rotation: Vec3 = Vec3(0f, 0f, 0f),
     val bindingMode: BindingMode = BindingMode.Partial
 ) {
-    fun blend(animationPose: Vec2, physicsPose: Vec2, weight: Float): Vec2 {
-        val x = animationPose.x * (1f - weight) + physicsPose.x * weight
-        val y = animationPose.y * (1f - weight) + physicsPose.y * weight
-        return Vec2(x, y)
+    fun blend(animationPose: Vec3, physicsPose: Vec3, weight: Float): Vec3 {
+        return Vec3(
+            animationPose.x * (1f - weight) + physicsPose.x * weight,
+            animationPose.y * (1f - weight) + physicsPose.y * weight,
+            animationPose.z * (1f - weight) + physicsPose.z * weight
+        )
     }
 
     fun paintedWeight(index: Int): Float = when (bindingMode) {
@@ -200,27 +220,43 @@ class MeshBinding(
         BindingMode.PhysicsDriven -> 1f
     }
 
-    fun finalSurface(animationPose: Vec2, physicsPose: Vec2): List<Vec2> {
-        val c = cos(rotation.toDouble()).toFloat()
-        val s = sin(rotation.toDouble()).toFloat()
+    fun rotatePoint(vertex: Vec3): Vec3 {
+        val x = vertex.x
+        val y = vertex.y
+        val z = vertex.z
 
+        val ax = rotation.x
+        val ay = rotation.y
+        val az = rotation.z
+
+        val cosX = cos(ax)
+        val sinX = sin(ax)
+        val cosY = cos(ay)
+        val sinY = sin(ay)
+        val cosZ = cos(az)
+        val sinZ = sin(az)
+
+        val y1 = y * cosX - z * sinX
+        val z1 = y * sinX + z * cosX
+        val x2 = x * cosY + z1 * sinY
+        val z2 = -x * sinY + z1 * cosY
+        val x3 = x2 * cosZ - y1 * sinZ
+        val y3 = x2 * sinZ + y1 * cosZ
+
+        return Vec3(x3, y3, z2)
+    }
+
+    fun finalSurface(animationPose: Vec3, physicsPose: Vec3): List<Vec3> {
         return surfaceMesh.mapIndexed { index, vertex ->
             val weight = paintedWeight(index)
             val blended = blend(animationPose, physicsPose, weight)
-            val px = (vertex.x * c - vertex.y * s) + blended.x + transform.x
-            val py = (vertex.x * s + vertex.y * c) + blended.y + transform.y
-            Vec2(px, py)
+            val rotated = rotatePoint(vertex)
+            Vec3(
+                rotated.x + blended.x + transform.x,
+                rotated.y + blended.y + transform.y,
+                rotated.z + blended.z + transform.z
+            )
         }
-    }
-
-    fun finalPoint(vertex: Vec2, index: Int, animationPose: Vec2, physicsPose: Vec2): Vec2 {
-        val weight = paintedWeight(index)
-        val blended = blend(animationPose, physicsPose, weight)
-        val c = cos(rotation.toDouble()).toFloat()
-        val s = sin(rotation.toDouble()).toFloat()
-        val px = (vertex.x * c - vertex.y * s) + blended.x + transform.x
-        val py = (vertex.x * s + vertex.y * c) + blended.y + transform.y
-        return Vec2(px, py)
     }
 }
 
@@ -231,27 +267,39 @@ class MeshRigScene(
 ) {
     fun update(dt: Float) {
         proxy.step(dt, 900f)
-        proxy.applyBounds(900f, 1200f)
+        proxy.applyBounds(900f, 600f)
         animationTimeline.update(dt)
     }
 
-    fun sampleRigPose(): Vec2 {
+    fun sampleRigPose(): Vec3 {
         val primary = animationTimeline.sample("position")
         val secondary = animationTimeline.sample("secondary")
-        return Vec2(primary.x + secondary.x, primary.y + secondary.y)
+        return Vec3(primary.x + secondary.x, primary.y + secondary.y, primary.z + secondary.z)
     }
 
-    fun finalSurface(): List<Vec2> {
+    fun finalSurface(): List<Vec3> {
         val animationPose = sampleRigPose()
         val physicsPose = proxy.position
         return meshBinding.finalSurface(animationPose, physicsPose)
+    }
+
+    fun projectToScreen(width: Float, height: Float, cameraDistance: Float = 600f, focalLength: Float = 560f): List<Vec2> {
+        val zBias = cameraDistance
+        return finalSurface().map { point ->
+            val z = point.z + zBias
+            val scale = focalLength / z.coerceAtLeast(1f)
+            Vec2(
+                point.x * scale + width * 0.5f,
+                point.y * scale + height * 0.5f
+            )
+        }
     }
 
     fun setPlaying(enabled: Boolean) {
         animationTimeline.playing = enabled
     }
 
-    fun setLoopPose(start: Vec2, end: Vec2, duration: Float) {
+    fun setLoopPose(start: Vec3, end: Vec3, duration: Float) {
         animationTimeline.setLoopPose("position", start, end, duration)
     }
 
@@ -259,7 +307,7 @@ class MeshRigScene(
         animationTimeline.currentTime = time
     }
 
-    fun setSecondaryMotion(start: Vec2, mid: Vec2, end: Vec2, duration: Float) {
+    fun setSecondaryMotion(start: Vec3, mid: Vec3, end: Vec3, duration: Float) {
         animationTimeline.addMultiTrackPose("secondary", start, mid, end, duration)
     }
 }
@@ -267,28 +315,28 @@ class MeshRigScene(
 class SceneRigBuilder {
     fun createScene(): MeshRigScene {
         val timeline = AnimationTimeline().apply {
-            setLoopPose("position", Vec2(110f, 180f), Vec2(260f, 150f), 2f)
-            addMultiTrackPose("secondary", Vec2(0f, 0f), Vec2(12f, -18f), Vec2(2f, 6f), 1.5f)
+            setLoopPose("position", Vec3(0f, 0f, 0f), Vec3(40f, 18f, 25f), 2f)
+            addMultiTrackPose("secondary", Vec3(0f, 0f, 0f), Vec3(12f, -18f, 8f), Vec3(18f, 30f, 12f), 1.5f)
             play()
         }
 
         val proxy = PhysicsProxy(
-            position = Vec2(150f, 190f),
-            velocity = Vec2(35f, 18f),
+            position = Vec3(0f, 0f, 20f),
+            velocity = Vec3(18f, 10f, 12f),
             radius = 28f
         )
 
         val points = listOf(
-            Vec2(-38f, -26f),
-            Vec2(12f, -52f),
-            Vec2(50f, -28f),
-            Vec2(62f, 0f),
-            Vec2(52f, 24f),
-            Vec2(18f, 40f),
-            Vec2(-10f, 52f),
-            Vec2(-42f, 38f),
-            Vec2(-58f, 8f),
-            Vec2(-48f, -16f)
+            Vec3(-38f, -26f, -18f),
+            Vec3(12f, -52f, -10f),
+            Vec3(50f, -28f, -22f),
+            Vec3(62f, 0f, 0f),
+            Vec3(52f, 24f, 10f),
+            Vec3(18f, 40f, 14f),
+            Vec3(-10f, 52f, 20f),
+            Vec3(-42f, 38f, 12f),
+            Vec3(-58f, 8f, -12f),
+            Vec3(-48f, -16f, -26f)
         )
 
         val weightPaint = WeightPaint().apply {
@@ -304,8 +352,8 @@ class SceneRigBuilder {
             collisionMesh = points,
             weightPaint = weightPaint,
             bindingMode = BindingMode.Partial,
-            transform = Vec2(0f, 0f),
-            rotation = 0.15f
+            transform = Vec3(0f, 0f, 0f),
+            rotation = Vec3(0.18f, 0.28f, 0.12f)
         )
 
         return MeshRigScene(
