@@ -4,6 +4,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.tan
 
 class Vec3(
     var x: Float,
@@ -30,6 +31,46 @@ enum class BindingMode {
     Full,
     Partial,
     PhysicsDriven
+}
+
+class Camera3D(
+    var position: Vec3 = Vec3(0f, 0f, 400f),
+    var yaw: Float = 0f,
+    var pitch: Float = 0f,
+    var fovDegrees: Float = 55f,
+    var aspectRatio: Float = 1f
+) {
+    fun worldToCamera(point: Vec3): Vec3 {
+        val dx = point.x - position.x
+        val dy = point.y - position.y
+        val dz = point.z - position.z
+
+        val cy = cos(yaw)
+        val sy = sin(yaw)
+        val cp = cos(pitch)
+        val sp = sin(pitch)
+
+        val x1 = dx * cy + dz * sy
+        val z1 = -dx * sy + dz * cy
+        val y1 = dy * cp - z1 * sp
+        val z2 = dy * sp + z1 * cp
+
+        return Vec3(x1, y1, z2)
+    }
+
+    fun project(point: Vec3, width: Float, height: Float): Vec2 {
+        val cameraSpace = worldToCamera(point)
+        val near = 0.1f
+        val fov = Math.toRadians(fovDegrees.toDouble()).toFloat()
+        val f = 1f / tan(fov * 0.5f)
+        val z = cameraSpace.z
+        val depth = z.coerceAtLeast(near)
+        val scale = f / depth
+
+        val screenX = cameraSpace.x * scale * aspectRatio + width * 0.5f
+        val screenY = -cameraSpace.y * scale + height * 0.5f
+        return Vec2(screenX, screenY)
+    }
 }
 
 class WeightPaint {
@@ -263,12 +304,14 @@ class MeshBinding(
 class MeshRigScene(
     private val animationTimeline: AnimationTimeline,
     private val proxy: PhysicsProxy,
-    private val meshBinding: MeshBinding
+    private val meshBinding: MeshBinding,
+    val camera: Camera3D = Camera3D(position = Vec3(0f, 0f, 420f), yaw = 0.25f, pitch = 0.18f)
 ) {
     fun update(dt: Float) {
         proxy.step(dt, 900f)
         proxy.applyBounds(900f, 600f)
         animationTimeline.update(dt)
+        camera.aspectRatio = 900f / 1200f
     }
 
     fun sampleRigPose(): Vec3 {
@@ -283,16 +326,13 @@ class MeshRigScene(
         return meshBinding.finalSurface(animationPose, physicsPose)
     }
 
-    fun projectToScreen(width: Float, height: Float, cameraDistance: Float = 600f, focalLength: Float = 560f): List<Vec2> {
-        val zBias = cameraDistance
-        return finalSurface().map { point ->
-            val z = point.z + zBias
-            val scale = focalLength / z.coerceAtLeast(1f)
-            Vec2(
-                point.x * scale + width * 0.5f,
-                point.y * scale + height * 0.5f
-            )
+    fun projectToScreen(width: Float, height: Float, cameraOverride: Camera3D? = null): List<Vec2> {
+        val activeCamera = cameraOverride ?: camera
+        val projected = mutableListOf<Vec2>()
+        for (point in finalSurface()) {
+            projected.add(activeCamera.project(point, width, height))
         }
+        return projected
     }
 
     fun setPlaying(enabled: Boolean) {
@@ -359,7 +399,8 @@ class SceneRigBuilder {
         return MeshRigScene(
             animationTimeline = timeline,
             proxy = proxy,
-            meshBinding = meshBinding
+            meshBinding = meshBinding,
+            camera = Camera3D(position = Vec3(0f, 0f, 420f), yaw = 0.25f, pitch = 0.18f, aspectRatio = 900f / 1200f)
         )
     }
 }
