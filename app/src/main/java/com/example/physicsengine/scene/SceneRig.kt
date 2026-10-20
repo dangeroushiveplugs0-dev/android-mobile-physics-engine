@@ -1,5 +1,6 @@
 package com.example.physicsengine.scene
 
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
@@ -35,7 +36,7 @@ class WeightPaint {
 
     fun setSoftFalloff(center: Int, radius: Int, peak: Float, base: Float = 0f) {
         for (index in max(0, center - radius)..(center + radius)) {
-            val distance = kotlin.math.abs(index - center).toFloat()
+            val distance = abs(index - center).toFloat()
             val falloff = (1f - (distance / (radius + 1f))).coerceIn(0f, 1f)
             val value = base + (peak - base) * falloff
             set(index, value)
@@ -234,8 +235,14 @@ class MeshRigScene(
         animationTimeline.update(dt)
     }
 
+    fun sampleRigPose(): Vec2 {
+        val primary = animationTimeline.sample("position")
+        val secondary = animationTimeline.sample("secondary")
+        return Vec2(primary.x + secondary.x, primary.y + secondary.y)
+    }
+
     fun finalSurface(): List<Vec2> {
-        val animationPose = animationTimeline.sample("position")
+        val animationPose = sampleRigPose()
         val physicsPose = proxy.position
         return meshBinding.finalSurface(animationPose, physicsPose)
     }
@@ -273,21 +280,23 @@ class SceneRigBuilder {
 
         val points = listOf(
             Vec2(-38f, -26f),
-            Vec2(18f, -44f),
-            Vec2(52f, -18f),
-            Vec2(54f, 16f),
-            Vec2(26f, 38f),
-            Vec2(-10f, 46f),
-            Vec2(-42f, 30f),
-            Vec2(-52f, 4f)
+            Vec2(12f, -52f),
+            Vec2(50f, -28f),
+            Vec2(62f, 0f),
+            Vec2(52f, 24f),
+            Vec2(18f, 40f),
+            Vec2(-10f, 52f),
+            Vec2(-42f, 38f),
+            Vec2(-58f, 8f),
+            Vec2(-48f, -16f)
         )
 
         val weightPaint = WeightPaint().apply {
-            setRange(0, 1, 0.35f)
-            setRange(2, 3, 0.6f)
-            setRange(4, 5, 0.82f)
-            setRange(6, 7, 0.9f)
-            setSoftFalloff(3, 2, 0.75f)
+            setRange(0, 1, 0.30f)
+            setRange(2, 4, 0.55f)
+            setRange(5, 6, 0.78f)
+            setRange(7, 9, 0.88f)
+            setSoftFalloff(4, 2, 0.72f)
         }
 
         val meshBinding = MeshBinding(
@@ -296,7 +305,7 @@ class SceneRigBuilder {
             weightPaint = weightPaint,
             bindingMode = BindingMode.Partial,
             transform = Vec2(0f, 0f),
-            rotation = 0.2f
+            rotation = 0.15f
         )
 
         return MeshRigScene(
