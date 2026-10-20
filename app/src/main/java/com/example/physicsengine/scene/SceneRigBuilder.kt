@@ -4,6 +4,7 @@ class SceneRigBuilder {
     fun createScene(): MeshRigScene {
         val timeline = AnimationTimeline().apply {
             setLoopPose("position", Vec2(110f, 180f), Vec2(260f, 150f), 2f)
+            setLoopPose("secondary", Vec2(0f, 0f), Vec2(12f, -18f), 1.5f)
             play()
         }
 
@@ -15,17 +16,20 @@ class SceneRigBuilder {
 
         val points = listOf(
             Vec2(-38f, -26f),
-            Vec2(10f, -42f),
-            Vec2(46f, -12f),
-            Vec2(38f, 26f),
-            Vec2(-8f, 42f),
-            Vec2(-44f, 18f)
+            Vec2(18f, -44f),
+            Vec2(52f, -18f),
+            Vec2(54f, 16f),
+            Vec2(26f, 38f),
+            Vec2(-10f, 46f),
+            Vec2(-42f, 30f),
+            Vec2(-52f, 4f)
         )
 
         val weightPaint = WeightPaint().apply {
             setRange(0, 1, 0.35f)
             setRange(2, 3, 0.6f)
-            setRange(4, 5, 0.85f)
+            setRange(4, 5, 0.82f)
+            setRange(6, 7, 0.9f)
         }
 
         val meshBinding = MeshBinding(
