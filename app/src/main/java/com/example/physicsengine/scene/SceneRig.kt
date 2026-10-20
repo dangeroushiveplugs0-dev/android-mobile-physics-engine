@@ -33,6 +33,15 @@ class WeightPaint {
         }
     }
 
+    fun setSoftFalloff(center: Int, radius: Int, peak: Float, base: Float = 0f) {
+        for (index in max(0, center - radius)..(center + radius)) {
+            val distance = kotlin.math.abs(index - center).toFloat()
+            val falloff = (1f - (distance / (radius + 1f))).coerceIn(0f, 1f)
+            val value = base + (peak - base) * falloff
+            set(index, value)
+        }
+    }
+
     fun get(vertexIndex: Int): Float = weights[vertexIndex] ?: 0f
 
     fun clear() = weights.clear()
@@ -101,6 +110,13 @@ class AnimationTimeline {
     fun setLoopPose(trackName: String, start: Vec2, end: Vec2, duration: Float) {
         val track = ensureTrack(trackName)
         track.addKeyframe(0f, start)
+        track.addKeyframe(duration, end)
+    }
+
+    fun addMultiTrackPose(trackName: String, start: Vec2, mid: Vec2, end: Vec2, duration: Float) {
+        val track = ensureTrack(trackName)
+        track.addKeyframe(0f, start)
+        track.addKeyframe(duration * 0.5f, mid)
         track.addKeyframe(duration, end)
     }
 
@@ -231,8 +247,13 @@ class MeshRigScene(
     fun setLoopPose(start: Vec2, end: Vec2, duration: Float) {
         animationTimeline.setLoopPose("position", start, end, duration)
     }
+
     fun setTime(time: Float) {
         animationTimeline.currentTime = time
+    }
+
+    fun setSecondaryMotion(start: Vec2, mid: Vec2, end: Vec2, duration: Float) {
+        animationTimeline.addMultiTrackPose("secondary", start, mid, end, duration)
     }
 }
 
@@ -240,7 +261,7 @@ class SceneRigBuilder {
     fun createScene(): MeshRigScene {
         val timeline = AnimationTimeline().apply {
             setLoopPose("position", Vec2(110f, 180f), Vec2(260f, 150f), 2f)
-            setLoopPose("secondary", Vec2(0f, 0f), Vec2(12f, -18f), 1.5f)
+            addMultiTrackPose("secondary", Vec2(0f, 0f), Vec2(12f, -18f), Vec2(2f, 6f), 1.5f)
             play()
         }
 
@@ -266,6 +287,7 @@ class SceneRigBuilder {
             setRange(2, 3, 0.6f)
             setRange(4, 5, 0.82f)
             setRange(6, 7, 0.9f)
+            setSoftFalloff(3, 2, 0.75f)
         }
 
         val meshBinding = MeshBinding(
