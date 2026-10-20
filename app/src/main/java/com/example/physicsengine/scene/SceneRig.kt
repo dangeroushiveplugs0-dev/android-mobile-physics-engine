@@ -26,11 +26,19 @@ class WeightPaint {
         weights[vertexIndex] = weight.coerceIn(0f, 1f)
     }
 
+    fun setRange(start: Int, end: Int, weight: Float) {
+        for (index in start..end) {
+            set(index, weight)
+        }
+    }
+
     fun get(vertexIndex: Int): Float = weights[vertexIndex] ?: 0f
 
     fun clear() = weights.clear()
 
     fun normalize(vertexIndex: Int): Float = get(vertexIndex).coerceIn(0f, 1f)
+
+    fun all(): Map<Int, Float> = weights.toMap()
 }
 
 class AnimationTrack {
@@ -71,6 +79,8 @@ class AnimationTrack {
             previous.value.y + dy * smooth
         )
     }
+
+    fun duration(): Float = if (keyframes.isEmpty()) 0f else keyframes.last().time
 }
 
 class AnimationTimeline {
@@ -87,13 +97,27 @@ class AnimationTimeline {
         ensureTrack(trackName).addKeyframe(time, value)
     }
 
-    fun sample(trackName: String): Vec2 {
-        return tracks[trackName]?.sample(currentTime) ?: Vec2(0f, 0f)
+    fun sample(trackName: String, time: Float = currentTime): Vec2 {
+        return tracks[trackName]?.sample(time) ?: Vec2(0f, 0f)
     }
+
+    fun maxDuration(): Float = tracks.values.fold(0f) { acc, track -> kotlinx.coroutines.internal.max(acc, track.duration()) }
 
     fun update(dt: Float) {
         if (!playing) return
         currentTime += dt
+        val maxTime = maxDuration()
+        if (loop && maxTime > 0f && currentTime >= maxTime) {
+            currentTime = 0f
+        }
+    }
+
+    fun play() {
+        playing = true
+    }
+
+    fun stop() {
+        playing = false
     }
 }
 
@@ -106,6 +130,25 @@ class PhysicsProxy(
         velocity.y += gravity * dt
         position.x += velocity.x * dt
         position.y += velocity.y * dt
+    }
+
+    fun applyBounds(width: Float, height: Float) {
+        if (position.x < radius) {
+            position.x = radius
+            velocity.x *= -0.8f
+        }
+        if (position.x > width - radius) {
+            position.x = width - radius
+            velocity.x *= -0.8f
+        }
+        if (position.y < radius) {
+            position.y = radius
+            velocity.y *= -0.8f
+        }
+        if (position.y > height - radius) {
+            position.y = height - radius
+            velocity.y *= -0.8f
+        }
     }
 }
 
@@ -142,6 +185,20 @@ class MeshBinding(
             Vec2(px, py)
         }
     }
+
+    fun finalPoint(vertex: Vec2, index: Int, animationPose: Vec2, physicsPose: Vec2): Vec2 {
+        val w = when (bindingMode) {
+            BindingMode.Full -> 1f
+            BindingMode.Partial -> weightPaint.get(index).coerceIn(0f, 1f)
+            BindingMode.PhysicsDriven -> 1f
+        }
+        val blended = blend(animationPose, physicsPose, w)
+        val c = cos(rotation.toDouble()).toFloat()
+        val s = sin(rotation.toDouble()).toFloat()
+        val px = (vertex.x * c - vertex.y * s) + blended.x + transform.x
+        val py = (vertex.x * s + vertex.y * c) + blended.y + transform.y
+        return Vec2(px, py)
+    }
 }
 
 class MeshRigScene(
@@ -151,6 +208,7 @@ class MeshRigScene(
 ) {
     fun update(dt: Float) {
         proxy.step(dt, 900f)
+        proxy.applyBounds(900f, 1200f)
         animationTimeline.update(dt)
     }
 
@@ -158,5 +216,9 @@ class MeshRigScene(
         val animationPose = animationTimeline.sample("position")
         val physicsPose = proxy.position
         return meshBinding.finalSurface(animationPose, physicsPose)
+    }
+
+    fun setPlaying(enabled: Boolean) {
+        animationTimeline.playing = enabled
     }
 }
