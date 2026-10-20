@@ -4,11 +4,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -64,12 +61,12 @@ private fun SceneRigDemo() {
                 .background(Color(0xFF101A2B), RoundedCornerShape(22.dp))
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val points = sceneRig.finalSurface()
-                if (points.isNotEmpty()) {
+                val projected = sceneRig.projectToScreen(size.width, size.height)
+                if (projected.isNotEmpty()) {
                     val path = Path().apply {
-                        moveTo(points.first().x, points.first().y)
-                        for (i in 1 until points.size) {
-                            lineTo(points[i].x, points[i].y)
+                        moveTo(projected.first().x, projected.first().y)
+                        for (i in 1 until projected.size) {
+                            lineTo(projected[i].x, projected[i].y)
                         }
                         close()
                     }
