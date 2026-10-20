@@ -63,6 +63,14 @@ class AnimationTimeline {
 
     fun poseFor(trackName: String): Vec2 = sample(trackName, currentTime)
 
+    fun setLoopingPose(trackName: String, start: Vec2, end: Vec2, duration: Float) {
+        tracks.remove(trackName)
+        tracks[trackName] = mutableListOf(
+            Keyframe(0f, start),
+            Keyframe(duration, end)
+        )
+    }
+
     enum class Interpolation {
         Linear,
         Smooth,
@@ -91,6 +99,8 @@ data class PhysicsWeightPaint(
     fun add(index: Int, weight: Float) {
         vertices.add(WeightVertex(index, weight))
     }
+
+    fun weightAt(index: Int): Float = vertices.firstOrNull { it.index == index }?.weight ?: 0f
 }
 
 data class RenderBinding(
@@ -116,14 +126,79 @@ data class RenderBinding(
 class AnimationPhysicsBinding(
     val renderBinding: RenderBinding,
     val animationTimeline: AnimationTimeline,
-    val physicsTarget: Vec2
+    val physicsTarget: Vec2,
+    private val blendStrength: Float = 0.6f
 ) {
     fun blendPose(): Vec2 {
         val animated = animationTimeline.poseFor("position")
-        val blend = 0.6f
         return Vec2(
-            animated.x * (1f - blend) + physicsTarget.x * blend,
-            animated.y * (1f - blend) + physicsTarget.y * blend
+            animated.x * (1f - blendStrength) + physicsTarget.x * blendStrength,
+            animated.y * (1f - blendStrength) + physicsTarget.y * blendStrength
         )
+    }
+
+    fun applyToRender() {
+        val blended = blendPose()
+        renderBinding.position = blended
+    }
+}
+
+class AnimationRig(
+    val timeline: AnimationTimeline,
+    val meshBinding: RenderBinding,
+    val physicsTarget: Vec2
+) {
+    private val binding = AnimationPhysicsBinding(meshBinding, timeline, physicsTarget)
+
+    fun updatePhysicsTarget(target: Vec2) {
+        binding.applyToRender()
+        meshBinding.position = binding.blendPose()
+    }
+
+    fun addMoveKeyframe(time: Float, position: Vec2) {
+        timeline.addKeyframe("position", time, position)
+    }
+
+    fun sampleCurrentPose(): Vec2 = timeline.poseFor("position")
+}
+
+enum class BindingMode {
+    Full,
+    Partial,
+    PhysicsDriven
+}
+
+data class WeightVertex(
+    val index: Int,
+    val weight: Float
+)
+
+data class WeightPaint(
+    val vertices: MutableList<WeightVertex> = mutableListOf()
+) {
+    fun add(index: Int, weight: Float) {
+        vertices.add(WeightVertex(index, weight))
+    }
+
+    fun weightOf(index: Int): Float = vertices.firstOrNull { it.index == index }?.weight ?: 0f
+}
+
+data class MeshBinding(
+    val surfaceMesh: List<Vec2>,
+    val collisionMesh: List<Vec2>,
+    val weightPaint: WeightPaint,
+    val bindingMode: BindingMode = BindingMode.Partial,
+    var transform: Vec2 = Vec2(0f, 0f),
+    var rotation: Float = 0f,
+    val color: Color = Color(0xFF72D5FF)
+) {
+    fun transformedSurface(): List<Vec2> {
+        val c = cos(rotation.toDouble()).toFloat()
+        val s = sin(rotation.toDouble()).toFloat()
+        return surfaceMesh.map { v ->
+            val x = (v.x * c - v.y * s) + transform.x
+            val y = (v.x * s + v.y * c) + transform.y
+            Vec2(x, y)
+        }
     }
 }
